@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+import math
 
 
 def next_batch(num, train_data, labels):
@@ -46,33 +47,47 @@ if __name__ == "__main__":
     x_values = data_num.values
     y_values = one_hot.values
 
-    total_patterns = y_values.shape[0]
+    # Python optimisation variables
+    #learning_rate = np.power(10, math.log(0.1, 10) * np.random.rand(3))
+    learning_rate = 0.5
+    epochs = 1000
+    batch_size = 16
+    lamb = 0.0001
+    total_hidden_neurons_1 = 50
+    weight_stdevs = 0.03
 
-    train_set_size = int(total_patterns * 0.80)
-    test_size = int(total_patterns - train_set_size)
+    train_test_split_ratio = 0.8
+    validation_train_split_size = 0.2
+    total_patterns = y_values.shape[0]
+    train_set_size = int(total_patterns * train_test_split_ratio)
+    test_set_size = int(total_patterns - train_set_size)
+    validation_set_size = int(train_set_size * validation_train_split_size)
+    train_set_size = train_set_size - validation_set_size
+    total_input_dimensions = len(data_num.columns)
+    total_output_dimensions = len(one_hot.columns)
 
     indices_array = np.arange(0, total_patterns)
     np.random.shuffle(indices_array)
     train_indices = indices_array[:train_set_size]
-    test_indices = indices_array[train_set_size:]
+    validation_indices = indices_array[train_set_size:train_set_size + validation_set_size]
+    test_indices = indices_array[train_set_size + validation_set_size:]
     x_train = [x_values[index] for index in train_indices]
     y_train = [y_values[index] for index in train_indices]
+    x_validate = [x_values[index] for index in validation_indices]
+    y_validate = [y_values[index] for index in validation_indices]
     x_test = [x_values[index] for index in test_indices]
     y_test = [y_values[index] for index in test_indices]
 
-    # Python optimisation variables
-    learning_rate = 0.5
-    epochs = 50
-    batch_size = 16
-
     # declare the training data placeholders
-    x = tf.placeholder(tf.float32, [None, 11])
-    y = tf.placeholder(tf.float32, [None, 3])
+    x = tf.placeholder(tf.float32, [None, total_input_dimensions])
+    y = tf.placeholder(tf.float32, [None, total_output_dimensions])
 
-    W1 = tf.Variable(tf.random_normal([11, 50], stddev=0.03), name='W1')
-    b1 = tf.Variable(tf.random_normal([50]), name='b1')
-    W2 = tf.Variable(tf.random_normal([50, 3], stddev=0.03), name='W2')
-    b2 = tf.Variable(tf.random_normal([3]), name='b2')
+    W1 = tf.Variable(tf.random_normal([total_input_dimensions, total_hidden_neurons_1],
+                                      stddev=weight_stdevs), name='W1')
+    b1 = tf.Variable(tf.random_normal([total_hidden_neurons_1]), name='b1')
+    W2 = tf.Variable(tf.random_normal([total_hidden_neurons_1, total_output_dimensions],
+                                      stddev=weight_stdevs), name='W2')
+    b2 = tf.Variable(tf.random_normal([total_output_dimensions]), name='b2')
 
     # calculate the output of the hidden layer
     hidden_out1 = tf.add(tf.matmul(x, W1), b1)
@@ -86,6 +101,11 @@ if __name__ == "__main__":
     y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
     cross_entropy = -tf.reduce_mean(tf.reduce_sum(y * tf.log(y_clipped)
                                                   + (1 - y) * tf.log(1 - y_clipped), axis=1))
+
+    # TODO: Try different regularization schemes
+    # Weight Decay Regularization
+    regularization = (lamb/2) * (tf.reduce_sum(tf.square(W1)) + tf.reduce_sum(tf.square(W2)))
+    cross_entropy = cross_entropy + regularization
 
     # add an optimiser
     optimiser = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cross_entropy)
