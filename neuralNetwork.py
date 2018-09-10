@@ -1,7 +1,6 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-import math
 
 
 def next_batch(num, train_data, labels):
@@ -17,6 +16,7 @@ def next_batch(num, train_data, labels):
 if __name__ == "__main__":
     # TODO: Ensure all steps performed
     np.random.seed(0)
+    tf.set_random_seed(0)
 
     # Importing Data
     data = pd.read_csv("/home/vignesh/PycharmProjects/SloanDigitalSkySurvey/"
@@ -48,13 +48,14 @@ if __name__ == "__main__":
     y_values = one_hot.values
 
     # Python optimisation variables
-    #learning_rate = np.power(10, math.log(0.1, 10) * np.random.rand(3))
+    # learning_rate = np.power(10, math.log(0.1, 10) * np.random.rand(3))
     learning_rate = 0.5
     epochs = 1000
     batch_size = 16
-    lamb = 0.0001
+    lamb = 0.00001
     total_hidden_neurons_1 = 50
     weight_stdevs = 0.03
+    keep_prob = 0.9
 
     train_test_split_ratio = 0.8
     validation_train_split_size = 0.2
@@ -93,6 +94,18 @@ if __name__ == "__main__":
     hidden_out1 = tf.add(tf.matmul(x, W1), b1)
     hidden_out1 = tf.nn.relu(hidden_out1)
 
+    # Regularization using dropout
+    # Mannual
+    # dropout_output = np.random.rand(total_input_dimensions, total_hidden_neurons_1)
+    # for i in range(dropout_output.shape[0]):
+    #     for j in range(dropout_output.shape[1]):
+    #         if dropout_output[i][j] > keep_prob:
+    #             dropout_output[i][j] = 0
+    # hidden_out1 = tf.multiply(hidden_out1, dropout_output)
+    # hidden_out1 /= keep_prob
+    # Library Function
+    hidden_out1 = tf.nn.dropout(hidden_out1, keep_prob)
+
     # now calculate the hidden layer output - in this case, let's use a softmax activated
     # output layer
     y_ = tf.nn.softmax(tf.add(tf.matmul(hidden_out1, W2), b2))
@@ -104,8 +117,8 @@ if __name__ == "__main__":
 
     # TODO: Try different regularization schemes
     # Weight Decay Regularization
-    regularization = (lamb/2) * (tf.reduce_sum(tf.square(W1)) + tf.reduce_sum(tf.square(W2)))
-    cross_entropy = cross_entropy + regularization
+    # regularization = (lamb/2) * (tf.reduce_sum(tf.square(W1)) + tf.reduce_sum(tf.square(W2)))
+    # cross_entropy = cross_entropy + regularization
 
     # add an optimiser
     optimiser = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cross_entropy)
@@ -131,4 +144,5 @@ if __name__ == "__main__":
             print("Epoch:", (epoch + 1), "cost =", "{:.3f}".format(avg_cost))
 
         print("\nTraining complete!")
+        keep_prob = 1
         print(sess.run(accuracy, feed_dict={x: np.asarray(x_test), y: np.asarray(y_test)}))
