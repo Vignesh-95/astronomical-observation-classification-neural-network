@@ -13,6 +13,18 @@ def next_batch(num, train_data, labels):
     return np.asarray(data_shuffle), np.asarray(labels_shuffle)
 
 
+def incremental_learning(sess, train_data, labels, candidate_data, candidate_labels):
+    data_set_length = len(train_data)
+    cost = []
+    for item in range(data_set_length):
+        cost.append(
+            [sess.run(cross_entropy, feed_dict={x: np.asarray([train_data[item]]), y: np.asarray([labels[item]])}),
+             train_data[item], labels[item]])
+    cost = max(cost, key=lambda x: x[0])
+    candidate_data.append(cost[1])
+    candidate_labels.append(cost[2])
+
+
 if __name__ == "__main__":
     # TODO: Ensure all steps performed
     np.random.seed(0)
@@ -50,7 +62,7 @@ if __name__ == "__main__":
     # Python optimisation variables
     # learning_rate = np.power(10, math.log(0.1, 10) * np.random.rand(3))
     learning_rate = 0.5
-    epochs = 1000
+    epochs = 100
     batch_size = 16
     lamb = 0.00001
     total_hidden_neurons_1 = 50
@@ -135,12 +147,25 @@ if __name__ == "__main__":
         # initialise the variables
         sess.run(init_op)
         total_batch = int(train_set_size / batch_size)
+        generalisation_factor = 0
+        id = np.arange(0, len(x_train))
+        np.random.shuffle(id)
+        id = id[:int(len(x_train)*0.2)]
+        candidate_x = [x_train[j] for j in id]
+        candidate_y = [y_train[j] for j in id]
         for epoch in range(epochs):
             avg_cost = 0
+            error_generalisation = 0
+            if generalisation_factor > 1.3:
+                incremental_learning(sess, x_train, y_train, candidate_x, candidate_y)
             for i in range(total_batch):
-                batch_x, batch_y = next_batch(batch_size, x_train, y_train)
+                batch_x, batch_y = next_batch(batch_size, candidate_x, candidate_y)
                 _, c = sess.run([optimiser, cross_entropy], feed_dict={x: batch_x, y: batch_y})
                 avg_cost += c / total_batch
+                error_generalisation += sess.run(cross_entropy, feed_dict={x: np.asarray(x_validate),
+                                                                      y: np.asarray(y_validate)}) / total_batch
+            generalisation_factor = error_generalisation/avg_cost
+            print("Generalisation Factor", generalisation_factor)
             print("Epoch:", (epoch + 1), "cost =", "{:.3f}".format(avg_cost))
 
         print("\nTraining complete!")
