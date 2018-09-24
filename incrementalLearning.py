@@ -1,14 +1,23 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style('whitegrid')
+
+SMALL_SIZE = 10
+MEDIUM_SIZE = 12
+
+plt.rc('font', size=SMALL_SIZE)
+plt.rc('axes', titlesize=MEDIUM_SIZE)
+plt.rc('axes', labelsize=MEDIUM_SIZE)
+plt.rcParams['figure.dpi']=150
 
 
 def next_batch(num, train_data, labels):
-    idx = np.arange(0, len(train_data))
-    np.random.shuffle(idx)
-    idx = idx[:num]
-    data_shuffle = [train_data[j] for j in idx]
-    labels_shuffle = [labels[j] for j in idx]
+    batch = idx[:num]
+    data_shuffle = [train_data[j] for j in batch]
+    labels_shuffle = [labels[j] for j in batch]
 
     return np.asarray(data_shuffle), np.asarray(labels_shuffle)
 
@@ -19,16 +28,20 @@ def incremental_learning(sess, train_data, labels, candidate_data, candidate_lab
     for item in range(data_set_length):
         cost.append(
             [sess.run(cross_entropy, feed_dict={x: np.asarray([train_data[item]]), y: np.asarray([labels[item]])}),
-             train_data[item], labels[item]])
+             train_data[item], labels[item], item])
     cost = max(cost, key=lambda x: x[0])
     candidate_data.append(cost[1])
     candidate_labels.append(cost[2])
+    train_data.pop(cost[3])
+    labels.pop(cost[3])
 
 
 if __name__ == "__main__":
     # TODO: Ensure all steps performed
-    np.random.seed(0)
-    tf.set_random_seed(0)
+    averageTrainingError = []
+    averageGeneralisationError = []
+    averageClassificationError = []
+    num_runs = 3
 
     # Importing Data
     data = pd.read_csv("/home/vignesh/PycharmProjects/SloanDigitalSkySurvey/"
@@ -43,29 +56,28 @@ if __name__ == "__main__":
     # TODO: Feature Engineering
 
     # Try Different Feature Scaling and Normalisation Techniques
+    #
     # Standardisation/Normalisation/Z-score
-    # data_num = data.select_dtypes(include=[np.number])
-    # data_num = (data_num - data_num.mean())/data_num.std()
-    # data[data_num.columns] = data_num
-    # one_hot = pd.get_dummies(data['class'])
-
-    # Linear Min-Max Scaling
     data_num = data.select_dtypes(include=[np.number])
-    minimum = data_num.min()
-    data_num = (data_num - minimum)/(data_num.max() - minimum)
+    data_num = (data_num - data_num.mean()) / data_num.std()
     data[data_num.columns] = data_num
-    one_hot = pd.get_dummies(data['class'], dtype=np.float32)
+    one_hot = pd.get_dummies(data['class'])
+    # Linear Min-Max Scaling
+    # data_num = data.select_dtypes(include=[np.number])
+    # minimum = data_num.min()
+    # data_num = (data_num - minimum)/(data_num.max() - minimum)
+    # data[data_num.columns] = data_num
+    # one_hot = pd.get_dummies(data['class'], dtype=np.float32)
 
     x_values = data_num.values
     y_values = one_hot.values
 
     # Python optimisation variables
-    # learning_rate = np.power(10, math.log(0.1, 10) * np.random.rand(3))
     learning_rate = 0.5
     epochs = 100
-    batch_size = 16
-    lamb = 0.00001
-    total_hidden_neurons_1 = 50
+    batch_size = 64
+    lamb = 0.000001
+    total_hidden_neurons_1 = 5
     weight_stdevs = 0.03
     keep_prob = 0.9
 
@@ -80,6 +92,7 @@ if __name__ == "__main__":
     total_output_dimensions = len(one_hot.columns)
 
     indices_array = np.arange(0, total_patterns)
+    np.random.seed(0)
     np.random.shuffle(indices_array)
     train_indices = indices_array[:train_set_size]
     validation_indices = indices_array[train_set_size:train_set_size + validation_set_size]
@@ -91,83 +104,123 @@ if __name__ == "__main__":
     x_test = [x_values[index] for index in test_indices]
     y_test = [y_values[index] for index in test_indices]
 
-    # declare the training data placeholders
-    x = tf.placeholder(tf.float32, [None, total_input_dimensions])
-    y = tf.placeholder(tf.float32, [None, total_output_dimensions])
+    for run in range(num_runs):
+        keep_prob = 0.9
+        learning_rate = 0.5
+        np.random.seed(run)
+        tf.set_random_seed(run)
 
-    W1 = tf.Variable(tf.random_normal([total_input_dimensions, total_hidden_neurons_1],
-                                      stddev=weight_stdevs), name='W1')
-    b1 = tf.Variable(tf.random_normal([total_hidden_neurons_1]), name='b1')
-    W2 = tf.Variable(tf.random_normal([total_hidden_neurons_1, total_output_dimensions],
-                                      stddev=weight_stdevs), name='W2')
-    b2 = tf.Variable(tf.random_normal([total_output_dimensions]), name='b2')
+        # declare the training data placeholders
+        x = tf.placeholder(tf.float32, [None, total_input_dimensions])
+        y = tf.placeholder(tf.float32, [None, total_output_dimensions])
 
-    # calculate the output of the hidden layer
-    hidden_out1 = tf.add(tf.matmul(x, W1), b1)
-    hidden_out1 = tf.nn.relu(hidden_out1)
+        W1 = tf.Variable(tf.random_normal([total_input_dimensions, total_hidden_neurons_1],
+                                          stddev=weight_stdevs), name='W1')
+        b1 = tf.Variable(tf.random_normal([total_hidden_neurons_1]), name='b1')
+        W2 = tf.Variable(tf.random_normal([total_hidden_neurons_1, total_output_dimensions],
+                                          stddev=weight_stdevs), name='W2')
+        b2 = tf.Variable(tf.random_normal([total_output_dimensions]), name='b2')
 
-    # Regularization using dropout
-    # Mannual
-    # dropout_output = np.random.rand(total_input_dimensions, total_hidden_neurons_1)
-    # for i in range(dropout_output.shape[0]):
-    #     for j in range(dropout_output.shape[1]):
-    #         if dropout_output[i][j] > keep_prob:
-    #             dropout_output[i][j] = 0
-    # hidden_out1 = tf.multiply(hidden_out1, dropout_output)
-    # hidden_out1 /= keep_prob
-    # Library Function
-    hidden_out1 = tf.nn.dropout(hidden_out1, keep_prob)
+        # calculate the output of the hidden layer
+        hidden_out1 = tf.add(tf.matmul(x, W1), b1)
+        hidden_out1 = tf.nn.sigmoid(hidden_out1)
 
-    # now calculate the hidden layer output - in this case, let's use a softmax activated
-    # output layer
-    y_ = tf.nn.softmax(tf.add(tf.matmul(hidden_out1, W2), b2))
+        # Regularization using dropout
+        # Mannual
+        # dropout_output = np.random.rand(total_input_dimensions, total_hidden_neurons_1)
+        # for i in range(dropout_output.shape[0]):
+        #     for j in range(dropout_output.shape[1]):
+        #         if dropout_output[i][j] > keep_prob:
+        #             dropout_output[i][j] = 0
+        # hidden_out1 = tf.multiply(hidden_out1, dropout_output)
+        # hidden_out1 /= keep_prob
+        # Library Function
+        # hidden_out1 = tf.nn.dropout(hidden_out1, keep_prob)
 
-    # now let's define the cost function which we are going to train the model on
-    y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
-    cross_entropy = -tf.reduce_mean(tf.reduce_sum(y * tf.log(y_clipped)
-                                                  + (1 - y) * tf.log(1 - y_clipped), axis=1))
+        # now calculate the hidden layer output - in this case, let's use a softmax activated
+        # output layer
+        y_ = tf.nn.softmax(tf.add(tf.matmul(hidden_out1, W2), b2))
 
-    # TODO: Try different regularization schemes
-    # Weight Decay Regularization
-    # regularization = (lamb/2) * (tf.reduce_sum(tf.square(W1)) + tf.reduce_sum(tf.square(W2)))
-    # cross_entropy = cross_entropy + regularization
+        # now let's define the cost function which we are going to train the model on
+        y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
+        cross_entropy = -tf.reduce_mean(tf.reduce_sum(y * tf.log(y_clipped)
+                                                      + (1 - y) * tf.log(1 - y_clipped), axis=1))
 
-    # add an optimiser
-    optimiser = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cross_entropy)
+        # TODO: Try different regularization schemes
+        # # Weight Decay Regularization
+        # regularization = (lamb/2) * (tf.reduce_sum(tf.square(W1)) + tf.reduce_sum(tf.square(W2)))
+        # cross_entropy = cross_entropy + regularization
 
-    # finally setup the initialisation operator
-    init_op = tf.global_variables_initializer()
+        # add an optimiser
+        optimiser = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cross_entropy)
 
-    # define an accuracy assessment operation
-    correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        # finally setup the initialisation operator
+        init_op = tf.global_variables_initializer()
 
-    # start the session
-    with tf.Session() as sess:
-        # initialise the variables
-        sess.run(init_op)
-        total_batch = int(train_set_size / batch_size)
-        generalisation_factor = 0
-        id = np.arange(0, len(x_train))
-        np.random.shuffle(id)
-        id = id[:int(len(x_train)*0.2)]
-        candidate_x = [x_train[j] for j in id]
-        candidate_y = [y_train[j] for j in id]
-        for epoch in range(epochs):
-            avg_cost = 0
-            error_generalisation = 0
-            if generalisation_factor > 1.3:
-                incremental_learning(sess, x_train, y_train, candidate_x, candidate_y)
-            for i in range(total_batch):
-                batch_x, batch_y = next_batch(batch_size, candidate_x, candidate_y)
-                _, c = sess.run([optimiser, cross_entropy], feed_dict={x: batch_x, y: batch_y})
-                avg_cost += c / total_batch
-                error_generalisation += sess.run(cross_entropy, feed_dict={x: np.asarray(x_validate),
-                                                                      y: np.asarray(y_validate)}) / total_batch
-            generalisation_factor = error_generalisation/avg_cost
-            print("Generalisation Factor", generalisation_factor)
-            print("Epoch:", (epoch + 1), "cost =", "{:.3f}".format(avg_cost))
+        # define an accuracy assessment operation
+        correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-        print("\nTraining complete!")
-        keep_prob = 1
-        print(sess.run(accuracy, feed_dict={x: np.asarray(x_test), y: np.asarray(y_test)}))
+        # start the session
+        with tf.Session() as sess:
+            # initialise the variables
+            sess.run(init_op)
+
+            generalisation_factor = 0
+            id = np.arange(0, len(x_train))
+            np.random.shuffle(id)
+            id = id[:int(len(x_train) * 0.5)]
+            candidate_x = [x_train[j] for j in id]
+            candidate_y = [y_train[j] for j in id]
+            deleted = 0
+            for j in id:
+                x_train.pop(j-deleted)
+                y_train.pop(j-deleted)
+                deleted = deleted + 1
+
+            average_epochs = 0
+            average_epochs_generalisation = 0
+            generalisation_errors = []
+            count = 0
+            for epoch in range(epochs):
+                avg_cost = 0
+                idx = np.arange(0, len(candidate_x))
+                np.random.shuffle(idx)
+                if generalisation_factor > 3:
+                    count = count + 1
+                    incremental_learning(sess, x_train, y_train, candidate_x, candidate_y)
+                total_batch = int(len(candidate_x) / batch_size)
+                for i in range(total_batch):
+                    batch_x, batch_y = next_batch(batch_size, candidate_x, candidate_y)
+                    idx = idx[batch_size:]
+                    # learning_rate = learning_rate * 0.99999
+                    _, c = sess.run([optimiser, cross_entropy], feed_dict={x: batch_x, y: batch_y})
+                    avg_cost += c / total_batch
+
+                average_epochs += avg_cost
+                gen = sess.run(cross_entropy, feed_dict={x: np.asarray(x_validate),
+                                                                                    y: np.asarray(y_validate)})
+                generalisation_errors.append(gen)
+                average_epochs_generalisation += gen
+                generalisation_factor = gen / avg_cost
+                print(generalisation_factor)
+                print("Epoch:", (epoch + 1), "cost =", "{:.3f}".format(avg_cost))
+
+            average_epochs = average_epochs/epochs
+            average_epochs_generalisation = average_epochs_generalisation/epochs
+            averageTrainingError.append(average_epochs)
+            averageGeneralisationError.append(average_epochs_generalisation)
+
+            # print("\n\nTraining complete!\n\n")
+            # keep_prob = 1
+            averageClassificationError.append(sess.run(accuracy, feed_dict={x: np.asarray(x_test),
+                                                                            y: np.asarray(y_test)}))
+
+            print("Count: ", count)
+
+    print("\n\nAverage Training Error: ", np.mean(averageTrainingError), "\t\tStandard Deviation: ",
+          np.std(averageTrainingError))
+    print("\n\nAverage Generalisation Error: ", np.mean(averageGeneralisationError), "\t\tStandard Deviation: ",
+          np.std(averageGeneralisationError))
+    print("\n\nAverage Classification Error: ", np.mean(averageClassificationError), "\t\tStandard Deviation: ",
+          np.std(averageClassificationError))

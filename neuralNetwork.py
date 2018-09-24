@@ -1,6 +1,17 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style('whitegrid')
+
+SMALL_SIZE = 10
+MEDIUM_SIZE = 12
+
+plt.rc('font', size=SMALL_SIZE)
+plt.rc('axes', titlesize=MEDIUM_SIZE)
+plt.rc('axes', labelsize=MEDIUM_SIZE)
+plt.rcParams['figure.dpi']=150
 
 
 def next_batch(num, train_data, labels):
@@ -48,10 +59,10 @@ if __name__ == "__main__":
     y_values = one_hot.values
 
     # Python optimisation variables
-    learning_rate = 0.9
+    learning_rate = 0.5
     epochs = 100
-    batch_size = 16
-    lamb = 0.00001
+    batch_size = 128
+    lamb = 0.000001
     total_hidden_neurons_1 = 5
     weight_stdevs = 0.03
     keep_prob = 0.9
@@ -80,8 +91,8 @@ if __name__ == "__main__":
     y_test = [y_values[index] for index in test_indices]
 
     for run in range(num_runs):
-        learning_rate = 0.9
         keep_prob = 0.9
+        learning_rate = 0.5
         np.random.seed(run)
         tf.set_random_seed(run)
 
@@ -122,7 +133,7 @@ if __name__ == "__main__":
                                                       + (1 - y) * tf.log(1 - y_clipped), axis=1))
 
         # TODO: Try different regularization schemes
-        # Weight Decay Regularization
+        # # Weight Decay Regularization
         # regularization = (lamb/2) * (tf.reduce_sum(tf.square(W1)) + tf.reduce_sum(tf.square(W2)))
         # cross_entropy = cross_entropy + regularization
 
@@ -143,21 +154,23 @@ if __name__ == "__main__":
             total_batch = int(train_set_size / batch_size)
             average_epochs = 0
             average_epochs_generalisation = 0
+            generalisation_errors = []
             for epoch in range(epochs):
                 avg_cost = 0
                 idx = np.arange(0, len(x_train))
                 np.random.shuffle(idx)
-                learning_rate = 0.99 * learning_rate
-                print(learning_rate)
                 for i in range(total_batch):
                     batch_x, batch_y = next_batch(batch_size, x_train, y_train)
                     idx = idx[batch_size:]
+                    # learning_rate = learning_rate * 0.99999
                     _, c = sess.run([optimiser, cross_entropy], feed_dict={x: batch_x, y: batch_y})
                     avg_cost += c / total_batch
                 print("Epoch:", (epoch + 1), "cost =", "{:.3f}".format(avg_cost))
                 average_epochs += avg_cost
-                average_epochs_generalisation += sess.run(cross_entropy, feed_dict={x: np.asarray(x_validate),
+                gen = sess.run(cross_entropy, feed_dict={x: np.asarray(x_validate),
                                                                                     y: np.asarray(y_validate)})
+                generalisation_errors.append(gen)
+                average_epochs_generalisation += gen
 
             average_epochs = average_epochs/epochs
             average_epochs_generalisation = average_epochs_generalisation/epochs
